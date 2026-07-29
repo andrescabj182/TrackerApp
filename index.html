@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Libro Mayor</title>
+
+<!-- iOS: permite abrir como app de pantalla completa desde "Añadir a pantalla de inicio" -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Libro Mayor" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#0B1220" />
+
+<!-- Tailwind vía CDN: compila las clases en el navegador, así que sí soporta valores
+     arbitrarios como bg-[#0B1220] (a diferencia del entorno de artifacts de Claude). -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+  html, body { background: #0B1220; }
+  .font-display { font-family: 'Fraunces', serif; }
+  .font-mono2 { font-family: 'JetBrains Mono', monospace; }
+  .font-body { font-family: 'Inter', sans-serif; }
+
+  .surface { background: #151F38; }
+  .surface-alt { background: #1E2B4C; }
+  .border-soft { border-color: #2B3A63; }
+  .text-primary { color: #F3F6FC; }
+  .text-muted { color: #A9B4CC; }
+  .text-gold { color: #E7C065; }
+  .bg-gold { background: #E7C065; }
+  .text-ink { color: #0B1220; }
+  .tracking-ledger { letter-spacing: 0.16em; }
+
+  .tab-btn { color: #A9B4CC; transition: color .15s, background-color .15s; }
+  .tab-btn:hover { color: #DCE3F2; }
+  .tab-btn.active { background: #1E2B4C; color: #F3F6FC; }
+
+  .preset-btn { border: 1px solid #2B3A63; color: #C7CFE3; background: transparent; transition: border-color .15s; }
+  .preset-btn:hover { border-color: #405085; }
+  .preset-btn.active { border-color: transparent; color: #0B1220; }
+
+  .ledger-input { background: #0B1220; border: 1px solid #2B3A63; color: #F3F6FC; }
+  .ledger-input::placeholder { color: #64719A; }
+  .ledger-input:focus { outline: none; border-color: #E7C065; }
+
+  .btn-gold { background: #E7C065; color: #0B1220; transition: filter .15s; }
+  .btn-gold:hover { filter: brightness(1.08); }
+
+  .btn-ghost { background: #1E2B4C; color: #F3F6FC; border: 1px solid #405085; transition: background-color .15s; }
+  .btn-ghost:hover { background: #263a68; }
+  .btn-disabled { background: #151F38; color: #5C6790; border: 1px solid #232F52; }
+
+  .quick-win { background: linear-gradient(135deg, #1E2B4C, #182444); border: 1px solid #405085; }
+
+  .ledger-strip { background: repeating-linear-gradient(#F6F1E3, #F6F1E3 27px, #EAE3CE 28px); }
+  .ledger-strip * { color: #2E2A1F; }
+  .ledger-credit { color: #2E7D46 !important; }
+  .ledger-debit { color: #B23A3A !important; }
+  .ledger-muted { color: #7A7154 !important; }
+  .torn-edge { -webkit-mask-image: linear-gradient(to bottom, black 96%, transparent 100%); }
+
+  .bar-wrap { display: flex; align-items: flex-end; gap: 10px; height: 160px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+  .bar-fill { width: 100%; border-radius: 6px 6px 0 0; transition: height .4s ease; min-height: 3px; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .fade-in { animation: fadeIn .35s ease-out; }
+    .pop-in { animation: popIn .4s cubic-bezier(.34,1.56,.64,1); }
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes popIn { from { opacity: 0; transform: scale(.9) translateY(4px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
+  /* Evita el "bounce" de Safari y respeta el notch en iOS */
+  body { overscroll-behavior-y: none; }
+</style>
+</head>
+<body class="font-body">
+
+<div id="app" class="min-h-screen text-primary" style="background:#0B1220;"></div>
+
+<script>
+// =============================================================================
+// CONFIGURACIÓN — edita aquí nombres, puntos por hora y colores si quieres
+// ajustar el balance del juego más adelante.
+// =============================================================================
+
+const TASKS = [
+  { id: "fuerza", name: "Ejercicio (Fuerza)", sub: "Pesas / entrenamiento de fuerza", rate: 60, emoji: "💪", color: "#E8677E", presets: [45, 60, 90] },
+  { id: "deportes", name: "Deportes", sub: "Fútbol / Tenis", rate: 48, emoji: "🏆", color: "#5FBE87", presets: [60, 90, 120] },
+  { id: "estudio", name: "Estudio", sub: "Cursos de finanzas / negocios", rate: 36, emoji: "📚", color: "#5D9BEA", presets: [30, 60, 90] },
+  { id: "yoga", name: "Yoga / Meditación", sub: "Práctica de calma", rate: 30, emoji: "🧘", color: "#B0A2F0", presets: [15, 30, 45] },
+  { id: "lectura_prod", name: "Lectura productiva", sub: "Artículos financieros → Obsidian", rate: 24, emoji: "📰", color: "#E0B75C", presets: [20, 30, 45] },
+  { id: "equity_analysis", name: "Equity Analysis", sub: "Modelos financieros / análisis de acciones", rate: 42, emoji: "📈", color: "#4FC3C7", presets: [45, 60, 90] },
+];
+
+const REWARDS = [
+  { id: "lectura_ocio", name: "Lectura de ocio", sub: "Novela histórica", emoji: "📖", color: "#E0B75C", kind: "time", ratePer30: 24, presets: [30, 60] },
+  { id: "videojuegos", name: "Videojuegos", sub: "FIFA / F1", emoji: "🎮", color: "#5D9BEA", kind: "time", ratePer30: 40, presets: [30, 60] },
+  { id: "guitarra", name: "Guitarra", sub: "Tocar un rato", emoji: "🎸", color: "#B0A2F0", kind: "time", ratePer30: 10, presets: [20, 30] },
+  { id: "amigos", name: "Salida con amigos", sub: "Plan social", emoji: "👥", color: "#E8677E", kind: "flat", cost: 60 },
+  { id: "peliculas_series", name: "Películas / Series", sub: "Sesión de pantalla sin culpa", emoji: "🎬", color: "#5FBE87", kind: "time", ratePer30: 30, presets: [45, 90] },
+];
+
+const RANKS = [
+  { min: 1, title: "Becario" }, { min: 3, title: "Analista Junior" }, { min: 6, title: "Analista" },
+  { min: 10, title: "Analista Senior" }, { min: 15, title: "Asociado" }, { min: 20, title: "Vicepresidente" },
+  { min: 28, title: "Director" }, { min: 36, title: "Managing Partner" },
+];
+
+const STORAGE_KEY = "ledger-data-v1";
+const BONUS_CHANCE = 0.22;
+const MONTHLY_FREEZES = 2;
+
+// =============================================================================
+// LÓGICA — no necesitas tocar nada de aquí hacia abajo para ajustar el juego.
+// =============================================================================
+
+function xpForLevel(level) { return 150 + (level - 1) * 45; }
+
+function computeLevel(totalXP) {
+  let level = 1, remaining = totalXP;
+  while (remaining >= xpForLevel(level)) { remaining -= xpForLevel(level); level += 1; }
+  return { level, into: remaining, need: xpForLevel(level) };
+}
+
+function rankTitle(level) {
+  let title = RANKS[0].title;
+  for (const r of RANKS) if (level >= r.min) title = r.title;
+  return title;
+}
+
+function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+
+function isSameDay(a, b) {
+  const da = new Date(a), db = new Date(b);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+function daysAgo(n) {
+  const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - n); return d.getTime();
+}
+
+function computeStreakWithFreezes(logs) {
+  const daysWithLog = new Set(logs.map((l) => new Date(l.ts).toDateString()));
+  const cursor = new Date(); cursor.setHours(0,0,0,0);
+  if (!daysWithLog.has(cursor.toDateString())) cursor.setDate(cursor.getDate() - 1);
+  const now = new Date();
+  let streak = 0, freezesLeft = MONTHLY_FREEZES, freezesUsed = 0;
+  while (true) {
+    const key = cursor.toDateString();
+    if (daysWithLog.has(key)) { streak += 1; }
+    else if (cursor.getMonth() === now.getMonth() && cursor.getFullYear() === now.getFullYear() && freezesLeft > 0) {
+      freezesLeft -= 1; freezesUsed += 1; streak += 1;
+    } else break;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return { streak, freezesUsed, freezesLeft };
+}
+
+function computeTaskStreak(logs, taskId) {
+  return computeStreakWithFreezes(logs.filter((l) => l.taskId === taskId));
+}
+
+// --- Estado persistente (localStorage) ---
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { logs: [], redemptions: [], totalXP: 0, balance: 0 };
+}
+function saveData() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data)); } catch (e) {}
+}
+
+// --- Estado en memoria (no persistente): pestaña activa, duraciones elegidas, toast ---
+const state = {
+  data: loadData(),
+  tab: "quests",
+  durations: {},
+  toast: null,
+  toastTimer: null,
+};
+
+function showToast(msg, tone) {
+  state.toast = { msg, tone, key: uid() };
+  render();
+  if (state.toastTimer) clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => { state.toast = null; render(); }, 2800);
+}
+
+function logTask(taskId, minutes) {
+  const task = TASKS.find((t) => t.id === taskId);
+  if (!task || !minutes || minutes <= 0) return;
+  const base = Math.round((task.rate * minutes) / 60);
+  const gotBonus = Math.random() < BONUS_CHANCE;
+  const bonus = gotBonus ? Math.round(base * 0.2) : 0;
+  const points = base + bonus;
+  const entry = { id: uid(), type: "credit", taskId: task.id, minutes, points, bonus, ts: Date.now() };
+  state.data.logs.unshift(entry);
+  state.data.totalXP += points;
+  state.data.balance += points;
+  saveData();
+  state.durations[task.id] = undefined;
+  showToast(gotBonus ? `Bono sorpresa · +${points} pts (+${bonus} extra)` : `+${points} pts · ${task.name}`, gotBonus ? "bonus" : "good");
+}
+
+function redeem(rewardId, minutes) {
+  const reward = REWARDS.find((r) => r.id === rewardId);
+  if (!reward) return;
+  const cost = reward.kind === "flat" ? reward.cost : Math.round((reward.ratePer30 * minutes) / 30);
+  if (cost <= 0) return;
+  if (state.data.balance < cost) { showToast(`Te faltan ${cost - state.data.balance} pts`, "bad"); return; }
+  const entry = { id: uid(), type: "debit", rewardId: reward.id, minutes: reward.kind === "time" ? minutes : null, points: cost, ts: Date.now() };
+  state.data.redemptions.unshift(entry);
+  state.data.balance -= cost;
+  saveData();
+  showToast(`-${cost} pts · ${reward.name}`, "spend");
+}
+
+function setDuration(key, value, rerender = true) {
+  state.durations[key] = value;
+  if (rerender) render();
+}
+
+function setTab(tab) { state.tab = tab; render(); }
+
+// =============================================================================
+// RENDER
+// =============================================================================
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+
+function renderHeader() {
+  const levelInfo = computeLevel(state.data.totalXP);
+  const streakInfo = computeStreakWithFreezes(state.data.logs);
+  const xpPct = Math.min(100, Math.round((levelInfo.into / levelInfo.need) * 100));
+  return `
+    <header class="mb-6">
+      <div class="flex items-baseline justify-between mb-1">
+        <div>
+          <p class="text-xs uppercase tracking-ledger text-muted font-mono2">Libro mayor personal</p>
+          <h1 class="font-display text-3xl font-semibold text-primary leading-tight">Nivel ${levelInfo.level} · ${rankTitle(levelInfo.level)}</h1>
+        </div>
+        <div class="text-right">
+          <p class="text-xs uppercase tracking-ledger text-muted font-mono2 mb-0.5">Saldo</p>
+          <p class="font-mono2 text-2xl font-bold text-gold">${state.data.balance.toLocaleString()}<span class="text-xs text-muted ml-1">pts</span></p>
+        </div>
+      </div>
+      <div class="w-full h-2 rounded-full surface-alt overflow-hidden mt-3">
+        <div class="h-full rounded-full transition-all duration-500" style="width:${xpPct}%;background:#E7C065;"></div>
+      </div>
+      <div class="flex justify-between items-center mt-1.5">
+        <span class="text-xs text-muted font-mono2">${levelInfo.into} / ${levelInfo.need} XP</span>
+        <span class="text-xs text-muted font-mono2 flex items-center gap-2">
+          ${streakInfo.freezesUsed > 0 ? `<span class="flex items-center gap-0.5" title="Días protegidos con comodín este mes">🧊${streakInfo.freezesUsed}</span>` : ""}
+          <span class="flex items-center gap-1">🔥 racha ${streakInfo.streak}d</span>
+        </span>
+      </div>
+    </header>
+  `;
+}
+
+function doneTaskIdsToday() {
+  return new Set(state.data.logs.filter((l) => isSameDay(l.ts, Date.now())).map((l) => l.taskId));
+}
+
+function renderQuickWin() {
+  if (state.tab !== "quests") return "";
+  const done = doneTaskIdsToday();
+  const pending = TASKS.filter((t) => !done.has(t.id));
+  if (pending.length === 0) return "";
+  const quickWin = pending.reduce((min, t) => (t.presets[0] < min.presets[0] ? t : min), pending[0]);
+  return `
+    <div class="quick-win rounded-2xl p-4 mb-4 fade-in">
+      <div class="flex items-center gap-3">
+        <div class="shrink-0 w-11 h-11 rounded-xl flex items-center justify-center text-xl" style="background:${quickWin.color}2E;">${quickWin.emoji}</div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs uppercase tracking-ledger text-gold font-mono2 flex items-center gap-1">⚡ Victoria rápida de hoy</p>
+          <p class="text-sm text-primary font-medium mt-0.5">${quickWin.presets[0]} min de ${quickWin.name.toLowerCase()} — listo en un momento</p>
+        </div>
+        <button onclick="logTask('${quickWin.id}', ${quickWin.presets[0]}); render();" class="btn-gold shrink-0 flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold">✓ Hacerlo</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderTabs() {
+  const tabs = [ { id: "quests", label: "Tareas" }, { id: "shop", label: "Recompensas" }, { id: "stats", label: "Progreso" } ];
+  return `
+    <nav class="flex gap-1 mb-5 surface p-1 rounded-xl">
+      ${tabs.map((t) => `
+        <button onclick="setTab('${t.id}')" class="tab-btn flex-1 py-2 rounded-lg text-sm font-medium ${state.tab === t.id ? "active" : ""}">${t.label}</button>
+      `).join("")}
+    </nav>
+  `;
+}
+
+function renderQuests() {
+  const done = doneTaskIdsToday();
+  return `<div class="space-y-3 fade-in">
+    ${TASKS.map((task) => {
+      const dur = state.durations[task.id] ?? task.presets[1];
+      const isDoneToday = done.has(task.id);
+      const presetsHtml = task.presets.map((p) => `
+        <button onclick="setDuration('${task.id}', ${p})" class="preset-btn px-2.5 py-1 rounded-lg text-xs font-mono2 ${dur === p ? "active" : ""}" ${dur === p ? `style="background:${task.color}"` : ""}>${p}m</button>
+      `).join("");
+      return `
+        <div class="surface rounded-2xl p-4 border border-soft">
+          <div class="flex items-start gap-3">
+            <div class="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:${task.color}26;">${task.emoji}</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold text-primary leading-tight flex items-center gap-1.5">${task.name} ${isDoneToday ? `<span title="Hecho hoy" style="color:#5FBE87;">✓</span>` : ""}</h3>
+                <span class="font-mono2 text-xs text-muted shrink-0">${task.rate} pts/h</span>
+              </div>
+              <p class="text-xs text-muted mt-0.5">${task.sub}</p>
+              <div class="flex items-center gap-1.5 mt-3 flex-wrap">
+                ${presetsHtml}
+                <input type="number" min="1" placeholder="min" id="dur-${task.id}"
+                  value="${task.presets.includes(dur) ? "" : (dur ?? "")}"
+                  oninput="setDuration('${task.id}', Number(this.value), false)"
+                  class="ledger-input w-16 px-2 py-1 rounded-lg text-xs font-mono2" />
+                <button onclick="logTask('${task.id}', document.getElementById('dur-${task.id}').value ? Number(document.getElementById('dur-${task.id}').value) : ${dur}); render();" class="btn-gold ml-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold">✓ Registrar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("")}
+  </div>`;
+}
+
+function renderShop() {
+  return `<div class="space-y-3 fade-in">
+    ${REWARDS.map((r) => {
+      const dur = state.durations[`r_${r.id}`] ?? (r.presets ? r.presets[0] : null);
+      const cost = r.kind === "flat" ? r.cost : Math.round((r.ratePer30 * dur) / 30);
+      const affordable = state.data.balance >= cost;
+      const presetsHtml = r.kind === "time" ? r.presets.map((p) => `
+        <button onclick="setDuration('r_${r.id}', ${p})" class="preset-btn px-2.5 py-1 rounded-lg text-xs font-mono2 ${dur === p ? "active" : ""}" ${dur === p ? `style="background:${r.color}"` : ""}>${p}m</button>
+      `).join("") : "";
+      return `
+        <div class="surface rounded-2xl p-4 border border-soft">
+          <div class="flex items-start gap-3">
+            <div class="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:${r.color}26;">${r.emoji}</div>
+            <div class="flex-1 min-w-0">
+              <h3 class="font-semibold text-primary leading-tight">${r.name}</h3>
+              <p class="text-xs text-muted mt-0.5">${r.sub}</p>
+              <div class="flex items-center gap-1.5 mt-3 flex-wrap">
+                ${presetsHtml}
+                <span class="font-mono2 text-xs ${affordable ? "text-gold" : "text-muted"}">${cost} pts</span>
+                <button onclick="redeem('${r.id}', ${dur}); render();" ${affordable ? "" : "disabled"} class="ml-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold ${affordable ? "btn-ghost" : "btn-disabled"}">Canjear →</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("")}
+  </div>`;
+}
+
+function renderStats() {
+  const cutoff = daysAgo(6);
+  const byTask = {}; TASKS.forEach((t) => (byTask[t.id] = 0));
+  state.data.logs.forEach((l) => { if (l.ts >= cutoff) byTask[l.taskId] = (byTask[l.taskId] || 0) + l.minutes; });
+  const weekly = TASKS.map((t) => ({ name: t.name.split(" ")[0], horas: Math.round((byTask[t.id] / 60) * 10) / 10, color: t.color }));
+  const maxH = Math.max(1, ...weekly.map((w) => w.horas));
+
+  const allTime = {}; TASKS.forEach((t) => (allTime[t.id] = 0));
+  state.data.logs.forEach((l) => { allTime[l.taskId] = (allTime[l.taskId] || 0) + l.minutes; });
+
+  const streakInfo = computeStreakWithFreezes(state.data.logs);
+
+  return `<div class="space-y-4 fade-in">
+    <div class="surface rounded-2xl p-4 border border-soft">
+      <h3 class="text-sm font-semibold text-primary mb-4 flex items-center gap-1.5">📊 Horas — últimos 7 días</h3>
+      <div class="bar-wrap">
+        ${weekly.map((w) => `
+          <div class="bar-col">
+            <span class="font-mono2 text-xs text-muted mb-1">${w.horas}h</span>
+            <div class="bar-fill" style="height:${(w.horas / maxH) * 100}%;background:${w.color};"></div>
+            <span class="font-mono2 text-[10px] text-muted mt-1.5 text-center leading-tight">${w.name}</span>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
+      ${TASKS.map((t) => {
+        const mins = allTime[t.id] || 0;
+        const s = computeTaskStreak(state.data.logs, t.id);
+        return `
+          <div class="surface rounded-2xl p-3.5 border border-soft">
+            <div class="flex items-center gap-2 mb-1"><span>${t.emoji}</span><span class="text-xs text-muted truncate">${t.name}</span></div>
+            <p class="font-mono2 text-xl font-bold text-primary">${(mins / 60).toFixed(1)}<span class="text-xs text-muted font-normal ml-1">h totales</span></p>
+            <div class="flex items-center gap-1 mt-1.5">
+              <span style="color:${s.streak > 0 ? t.color : "#5C6790"}">🔥</span>
+              <span class="font-mono2 text-xs text-muted">racha ${s.streak}d${s.freezesUsed > 0 ? ` (${s.freezesUsed} 🧊)` : ""}</span>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+
+    <div class="surface rounded-2xl p-4 border border-soft flex items-center justify-between">
+      <div><p class="text-xs text-muted">XP acumulada (histórico)</p><p class="font-mono2 text-xl font-bold text-gold">${state.data.totalXP.toLocaleString()}</p></div>
+      <div class="text-right">
+        <p class="text-xs text-muted">Racha actual</p>
+        <p class="font-mono2 text-xl font-bold" style="color:#E8677E;">${streakInfo.streak} días</p>
+        ${streakInfo.freezesLeft < MONTHLY_FREEZES ? `<p class="text-xs text-muted mt-0.5">${streakInfo.freezesLeft} comodín(es) disponibles este mes</p>` : ""}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderLedgerStrip() {
+  const all = [
+    ...state.data.logs.map((l) => ({ ...l })),
+    ...state.data.redemptions.map((r) => ({ ...r })),
+  ].filter((e) => isSameDay(e.ts, Date.now())).sort((a, b) => b.ts - a.ts);
+
+  const rows = all.length === 0
+    ? `<p class="font-mono2 text-xs ledger-muted py-3 text-center">aún sin movimientos — registra tu primera tarea</p>`
+    : `<div class="space-y-1.5">${all.map((e) => {
+        const isCredit = e.type === "credit";
+        const label = isCredit ? (TASKS.find((t) => t.id === e.taskId) || {}).name : (REWARDS.find((r) => r.id === e.rewardId) || {}).name;
+        return `
+          <div class="flex justify-between font-mono2 text-sm">
+            <span class="truncate pr-2">${escapeHtml(label || "")}${e.minutes ? ` · ${e.minutes}m` : ""}${e.bonus > 0 ? " ✨" : ""}</span>
+            <span class="${isCredit ? "ledger-credit" : "ledger-debit"}">${isCredit ? "+" : "-"}${e.points}</span>
+          </div>
+        `;
+      }).join("")}</div>`;
+
+  return `
+    <section class="mt-8">
+      <p class="text-xs uppercase tracking-ledger text-muted font-mono2 mb-2">Recibo de hoy</p>
+      <div class="rounded-xl overflow-hidden shadow-lg torn-edge">
+        <div class="ledger-strip px-4 pt-4 pb-6">
+          <div class="flex justify-between font-mono2 text-xs ledger-muted border-b border-dashed pb-2 mb-2" style="border-color:#B9AF94;">
+            <span>${new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}</span>
+            <span>fol. ${state.data.logs.length + state.data.redemptions.length}</span>
+          </div>
+          ${rows}
+          <div class="flex justify-between font-mono2 text-sm font-bold border-t border-dashed mt-2 pt-2" style="border-color:#B9AF94;">
+            <span>saldo</span><span>${state.data.balance.toLocaleString()} pts</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderToast() {
+  if (!state.toast) return "";
+  const colors = { good: "#5FBE87", spend: "#5D9BEA", bonus: "#E7C065", bad: "#E8677E" };
+  return `
+    <div class="pop-in fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl font-mono2 text-sm shadow-xl border flex items-center gap-2"
+      style="background:#151F38;border-color:${colors[state.toast.tone] || "#5FBE87"};color:#F3F6FC;">
+      ${state.toast.tone === "bonus" ? "✨" : ""} ${escapeHtml(state.toast.msg)}
+    </div>
+  `;
+}
+
+function render() {
+  document.getElementById("app").innerHTML = `
+    <div class="max-w-3xl mx-auto px-4 pb-28 pt-6">
+      ${renderHeader()}
+      ${renderQuickWin()}
+      ${renderTabs()}
+      ${state.tab === "quests" ? renderQuests() : ""}
+      ${state.tab === "shop" ? renderShop() : ""}
+      ${state.tab === "stats" ? renderStats() : ""}
+      ${renderLedgerStrip()}
+    </div>
+    ${renderToast()}
+  `;
+}
+
+render();
+</script>
+</body>
+</html>
